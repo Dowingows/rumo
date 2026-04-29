@@ -13,14 +13,26 @@ Shell: {shell}
 Diretório home do usuário: {home}
 Use APENAS comandos nativos disponíveis neste sistema. Não sugira comandos de outros sistemas operacionais.
 Use o caminho real do home ({home}) em vez de /Users/username ou ~.
-Não inclua mais nada na resposta."""
+Não inclua mais nada na resposta.{memoria}"""
 
 
 def sugerir(descricao: str) -> tuple[str, str]:
-    sistema = SYSTEM.format(os=_os_info(), shell=_shell(), home=os.path.expanduser("~"))
+    from rumo import memory
+
+    # memória tem prioridade — retorna imediatamente se há correspondência exata
+    salvo = memory.buscar_exato(descricao)
+    if salvo:
+        return salvo, "(da memória)"
+
+    ctx_memoria = memory.contexto_para_llm()
+    sistema = SYSTEM.format(
+        os=_os_info(),
+        shell=_shell(),
+        home=os.path.expanduser("~"),
+        memoria=f"\n{ctx_memoria}" if ctx_memoria else "",
+    )
     resposta = llm.complete(descricao, system=sistema)
     partes = resposta.split("\n\n", 1)
-    # garante apenas a primeira linha não-vazia como comando
     comando = next((l.strip().strip("`") for l in partes[0].splitlines() if l.strip()), "")
     explicacao = partes[1].strip() if len(partes) > 1 else ""
     return comando, explicacao

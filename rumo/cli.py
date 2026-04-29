@@ -66,5 +66,35 @@ def cmd_diagnosticar(
         raise typer.Exit(1)
 
 
+@app.command("memoria")
+def cmd_memoria(
+    limpar: Optional[str] = typer.Option(None, "--remover", "-r", help="Remove uma entrada pela descrição"),
+):
+    """Lista os comandos aprendidos e salvos na memória."""
+    from rumo import memory
+
+    if limpar:
+        if memory.remover(limpar):
+            console.print(f"[bold green]Removido:[/bold green] {limpar}")
+        else:
+            console.print(f"[bold red]Não encontrado:[/bold red] {limpar}")
+        return
+
+    entradas = memory.listar()
+    if not entradas:
+        console.print("[dim]Nenhum comando na memória ainda.[/dim]")
+        console.print("Quando um comando falhar, o rumo vai te perguntar o correto e salvar aqui.")
+        return
+
+    console.print(f"\n[bold]Memória do rumo[/bold] — {len(entradas)} entrada(s)\n")
+    for e in entradas:
+        data = e.get("atualizado_em") or e.get("criado_em", "")
+        console.print(f"[bold cyan]{e['descricao']}[/bold cyan]")
+        console.print(f"  [yellow]{e['comando']}[/yellow]")
+        if data:
+            console.print(f"  [dim]{data}[/dim]")
+        console.print()
+
+
 if __name__ == "__main__":
     app()

@@ -4,9 +4,9 @@ import shutil
 import subprocess
 import typer
 from rich.console import Console
-from rich.prompt import Confirm
+from rich.prompt import Confirm, Prompt
 from rumo.suggest import sugerir, _os_info
-from rumo import llm
+from rumo import llm, memory
 
 console = Console()
 
@@ -64,6 +64,30 @@ def _sugerir_alternativa(binario: str, descricao_original: str, sim: bool = Fals
     return cmd_alt
 
 
+def _pedir_correcao(descricao: str, sim: bool) -> None:
+    if sim:
+        console.print("[dim]Dica: use [bold]rumo diagnosticar[/bold] para entender o erro.[/dim]")
+        return
+
+    correcao = Prompt.ask(
+        "\n[yellow]Você sabe o comando correto?[/yellow] [dim](Enter para pular)[/dim]",
+        default="",
+    )
+    if not correcao.strip():
+        console.print("[dim]Dica: use [bold]rumo diagnosticar[/bold] para entender o erro.[/dim]")
+        return
+
+    console.print()
+    resultado = subprocess.run(correcao.strip(), shell=True, text=True)
+    if resultado.returncode == 0:
+        memory.salvar(descricao, correcao.strip())
+        console.print("\n[bold green]✓ Funcionou! Comando salvo na memória.[/bold green]")
+        console.print(f"[dim]Próxima vez que pedir '{descricao}', usarei este comando direto.[/dim]")
+    else:
+        console.print(f"\n[bold red]Também falhou (código {resultado.returncode}).[/bold red]")
+        console.print("[dim]Dica: use [bold]rumo diagnosticar[/bold] para entender o erro.[/dim]")
+
+
 def executar(descricao: str, sim: bool = False) -> None:
     console.print("\n[bold cyan]Gerando comando...[/bold cyan]")
     comando, explicacao = sugerir(descricao)
@@ -93,4 +117,4 @@ def executar(descricao: str, sim: bool = False) -> None:
     resultado = subprocess.run(comando, shell=True, text=True)
     if resultado.returncode != 0:
         console.print(f"\n[bold red]Saiu com código {resultado.returncode}[/bold red]")
-        console.print("[dim]Dica: use [bold]rumo diagnosticar[/bold] para entender o erro.[/dim]")
+        _pedir_correcao(descricao, sim)
