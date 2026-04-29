@@ -42,6 +42,8 @@ def cmd_executar(
 
     try:
         executar(descricao, sim=sim)
+    except typer.Exit:
+        raise
     except Exception as e:
         console.print(f"[bold red]Erro:[/bold red] {e}")
         raise typer.Exit(1)
