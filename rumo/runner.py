@@ -26,8 +26,8 @@ def _binario(comando: str) -> str:
     return token.lstrip("(").strip()
 
 
-def _sugerir_alternativa(binario: str, descricao_original: str) -> None:
-    console.print(f"\n[bold yellow]'{binario}' não existe no {_os_info().split('—')[0].strip()}.[/bold yellow]")
+def _sugerir_alternativa(binario: str, descricao_original: str, sim: bool = False) -> str | None:
+    console.print(f"\n[bold yellow]'{binario}' não existe neste sistema.[/bold yellow]")
     console.print("[dim]Buscando alternativa nativa...[/dim]\n")
 
     prompt = f"Quero: {descricao_original}\nO comando '{binario}' não existe aqui. Qual o equivalente nativo?"
@@ -41,13 +41,24 @@ def _sugerir_alternativa(binario: str, descricao_original: str) -> None:
 
     alt_binario = _binario(cmd_alt)
     if alt_binario and not shutil.which(alt_binario) and not cmd_alt.startswith("brew"):
-        console.print(f"[bold red]Não foi possível encontrar um comando nativo para '{binario}' neste sistema.[/bold red]")
+        console.print(f"[bold red]Não encontrei um comando nativo para '{binario}' neste sistema.[/bold red]")
         console.print(f"[dim]Sugestão do modelo (pode requerer instalação): [yellow]{cmd_alt}[/yellow][/dim]")
-        return
+        return None
 
     console.print(f"[bold green]Alternativa:[/bold green] [yellow]{cmd_alt}[/yellow]")
     if explicacao:
         console.print(f"[dim]{explicacao}[/dim]")
+
+    if cmd_alt.startswith("brew"):
+        return None
+
+    if not sim:
+        confirmar = Confirm.ask("\n[bold]Executar este comando?[/bold]", default=True)
+        if not confirmar:
+            console.print("[dim]Cancelado.[/dim]")
+            return None
+
+    return cmd_alt
 
 
 def executar(descricao: str, sim: bool = False) -> None:
@@ -60,7 +71,13 @@ def executar(descricao: str, sim: bool = False) -> None:
 
     binario = _binario(comando)
     if binario and not shutil.which(binario):
-        _sugerir_alternativa(binario, descricao)
+        cmd_alt = _sugerir_alternativa(binario, descricao, sim=sim)
+        if cmd_alt:
+            console.print()
+            resultado = subprocess.run(cmd_alt, shell=True, text=True)
+            if resultado.returncode != 0:
+                console.print(f"\n[bold red]Saiu com código {resultado.returncode}[/bold red]")
+                console.print("[dim]Dica: use [bold]rumo diagnosticar[/bold] para entender o erro.[/dim]")
         raise typer.Exit()
 
     if not sim:

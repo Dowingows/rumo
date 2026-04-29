@@ -35,6 +35,8 @@ def _os_info() -> str:
             "- Rede/IP: ifconfig (nunca ip addr)\n"
             "- Processos: ps aux ou top (nunca free)\n"
             "- Disco: df -h ou diskutil\n"
+            "- Bateria: pmset -g batt\n"
+            "- Hardware info: system_profiler SPHardwareDataType\n"
             "- Instalar pacotes: brew install <pacote>"
         )
     if system == "Linux":
