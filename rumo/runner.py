@@ -4,18 +4,18 @@ import subprocess
 import typer
 from rich.console import Console
 from rich.prompt import Confirm
-from rumo.suggest import sugerir
+from rumo.suggest import sugerir, _os_info
 from rumo import llm
 
 console = Console()
 
-SYSTEM_INSTALAR = """Você é um especialista em macOS.
-O nome abaixo é um comando que não está instalado. Responda APENAS com:
-- Linha 1: o comando brew para instalar (ex: brew install iproute2mac)
+SYSTEM_INSTALAR = """Você é um especialista em linha de comando no {os}.
+O nome abaixo é um binário que não está instalado neste sistema. Responda APENAS com:
+- Linha 1: o comando para instalar (use brew no macOS, apt no Ubuntu/Debian, dnf no Fedora)
 - Linha 2: em branco
 - Linha 3: uma frase curta explicando o que o pacote faz
 
-Use SOMENTE brew. Não use apt, yum ou qualquer outro gerenciador. Não numere as linhas."""
+Não numere as linhas. Não inclua mais nada."""
 
 
 def _binario(comando: str) -> str:
@@ -27,7 +27,7 @@ def _binario(comando: str) -> str:
 def _sugerir_instalacao(binario: str) -> None:
     console.print(f"\n[bold yellow]'{binario}' não encontrado no sistema.[/bold yellow]")
     console.print("[dim]Buscando como instalar...[/dim]\n")
-    resposta = llm.complete(binario, system=SYSTEM_INSTALAR)
+    resposta = llm.complete(binario, system=SYSTEM_INSTALAR.format(os=_os_info()))
     partes = resposta.split("\n\n", 1)
     cmd_install = partes[0].strip().strip("`")
     explicacao = partes[1].strip() if len(partes) > 1 else ""
