@@ -28,7 +28,15 @@ def _os_info() -> str:
     if system == "Darwin":
         version = platform.mac_ver()[0]
         arch = platform.machine()
-        return f"macOS {version} ({arch}) — use ifconfig, not ip; use brew para instalar pacotes"
+        return (
+            f"macOS {version} ({arch})\n"
+            "Comandos nativos obrigatórios no macOS (NÃO use equivalentes Linux):\n"
+            "- RAM/memória: vm_stat ou sysctl hw.memsize ou top -l 1 | grep PhysMem\n"
+            "- Rede/IP: ifconfig (nunca ip addr)\n"
+            "- Processos: ps aux ou top (nunca free)\n"
+            "- Disco: df -h ou diskutil\n"
+            "- Instalar pacotes: brew install <pacote>"
+        )
     if system == "Linux":
         try:
             info = platform.freedesktop_os_release()

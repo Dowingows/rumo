@@ -9,29 +9,43 @@ from rumo import llm
 
 console = Console()
 
-SYSTEM_INSTALAR = """Você é um especialista em linha de comando no {os}.
-O nome abaixo é um binário que não está instalado neste sistema. Responda APENAS com:
-- Linha 1: o comando para instalar (use brew no macOS, apt no Ubuntu/Debian, dnf no Fedora)
-- Linha 2: em branco
-- Linha 3: uma frase curta explicando o que o pacote faz
+SYSTEM_ALTERNATIVA = """Você é um especialista em linha de comando no {os}.
+O comando '{binario}' não existe neste sistema operacional.
 
+Responda APENAS com:
+- Linha 1: o comando nativo equivalente para este OS (sem markdown, sem backticks)
+- Linha 2: em branco
+- Linha 3: uma frase curta explicando o comando sugerido
+
+Se não houver nativo mas existir via brew, responda com: brew install <pacote>
 Não numere as linhas. Não inclua mais nada."""
 
 
 def _binario(comando: str) -> str:
-    """Extrai o nome do primeiro binário de um comando shell."""
     token = re.split(r"[\s|;&]", comando.strip())[0]
     return token.lstrip("(").strip()
 
 
-def _sugerir_instalacao(binario: str) -> None:
-    console.print(f"\n[bold yellow]'{binario}' não encontrado no sistema.[/bold yellow]")
-    console.print("[dim]Buscando como instalar...[/dim]\n")
-    resposta = llm.complete(binario, system=SYSTEM_INSTALAR.format(os=_os_info()))
+def _sugerir_alternativa(binario: str, descricao_original: str) -> None:
+    console.print(f"\n[bold yellow]'{binario}' não existe no {_os_info().split('—')[0].strip()}.[/bold yellow]")
+    console.print("[dim]Buscando alternativa nativa...[/dim]\n")
+
+    prompt = f"Quero: {descricao_original}\nO comando '{binario}' não existe aqui. Qual o equivalente nativo?"
+    resposta = llm.complete(
+        prompt,
+        system=SYSTEM_ALTERNATIVA.format(os=_os_info(), binario=binario),
+    )
     partes = resposta.split("\n\n", 1)
-    cmd_install = partes[0].strip().strip("`")
+    cmd_alt = partes[0].strip().strip("`")
     explicacao = partes[1].strip() if len(partes) > 1 else ""
-    console.print(f"[bold green]Para instalar:[/bold green] [yellow]{cmd_install}[/yellow]")
+
+    alt_binario = _binario(cmd_alt)
+    if alt_binario and not shutil.which(alt_binario) and not cmd_alt.startswith("brew"):
+        console.print(f"[bold red]Não foi possível encontrar um comando nativo para '{binario}' neste sistema.[/bold red]")
+        console.print(f"[dim]Sugestão do modelo (pode requerer instalação): [yellow]{cmd_alt}[/yellow][/dim]")
+        return
+
+    console.print(f"[bold green]Alternativa:[/bold green] [yellow]{cmd_alt}[/yellow]")
     if explicacao:
         console.print(f"[dim]{explicacao}[/dim]")
 
@@ -46,7 +60,7 @@ def executar(descricao: str, sim: bool = False) -> None:
 
     binario = _binario(comando)
     if binario and not shutil.which(binario):
-        _sugerir_instalacao(binario)
+        _sugerir_alternativa(binario, descricao)
         raise typer.Exit()
 
     if not sim:
