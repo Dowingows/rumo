@@ -4,21 +4,24 @@ from rumo import llm
 
 SYSTEM = """Você é um especialista em linha de comando.
 Dado um pedido em linguagem natural, responda APENAS com:
-1. O comando exato (em uma linha, sem markdown, sem backticks)
+1. O comando exato (em UMA única linha, sem markdown, sem backticks, sem quebra de linha)
 2. Uma linha em branco
 3. Uma explicação curta em português (máximo 2 linhas)
 
 Sistema operacional: {os}
 Shell: {shell}
+Diretório home do usuário: {home}
 Use APENAS comandos nativos disponíveis neste sistema. Não sugira comandos de outros sistemas operacionais.
+Use o caminho real do home ({home}) em vez de /Users/username ou ~.
 Não inclua mais nada na resposta."""
 
 
 def sugerir(descricao: str) -> tuple[str, str]:
-    sistema = SYSTEM.format(os=_os_info(), shell=_shell())
+    sistema = SYSTEM.format(os=_os_info(), shell=_shell(), home=os.path.expanduser("~"))
     resposta = llm.complete(descricao, system=sistema)
     partes = resposta.split("\n\n", 1)
-    comando = partes[0].strip().strip("`")
+    # garante apenas a primeira linha não-vazia como comando
+    comando = next((l.strip().strip("`") for l in partes[0].splitlines() if l.strip()), "")
     explicacao = partes[1].strip() if len(partes) > 1 else ""
     return comando, explicacao
 

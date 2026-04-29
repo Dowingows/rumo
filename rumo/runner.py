@@ -1,3 +1,4 @@
+import os
 import re
 import shutil
 import subprocess
@@ -11,12 +12,14 @@ console = Console()
 
 SYSTEM_ALTERNATIVA = """Você é um especialista em linha de comando no {os}.
 O comando '{binario}' não existe neste sistema operacional.
+Diretório home do usuário: {home}
 
 Responda APENAS com:
-- Linha 1: o comando nativo equivalente para este OS (sem markdown, sem backticks)
+- Linha 1: o comando nativo equivalente (em UMA única linha, sem markdown, sem backticks)
 - Linha 2: em branco
 - Linha 3: uma frase curta explicando o comando sugerido
 
+Use o caminho real ({home}) em vez de /Users/username ou ~.
 Se não houver nativo mas existir via brew, responda com: brew install <pacote>
 Não numere as linhas. Não inclua mais nada."""
 
@@ -33,7 +36,7 @@ def _sugerir_alternativa(binario: str, descricao_original: str, sim: bool = Fals
     prompt = f"Quero: {descricao_original}\nO comando '{binario}' não existe aqui. Qual o equivalente nativo?"
     resposta = llm.complete(
         prompt,
-        system=SYSTEM_ALTERNATIVA.format(os=_os_info(), binario=binario),
+        system=SYSTEM_ALTERNATIVA.format(os=_os_info(), binario=binario, home=os.path.expanduser("~")),
     )
     partes = resposta.split("\n\n", 1)
     cmd_alt = partes[0].strip().strip("`")
