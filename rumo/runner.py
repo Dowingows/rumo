@@ -29,6 +29,32 @@ def _binario(comando: str) -> str:
     return token.lstrip("(").strip()
 
 
+def _corrigir_typo(binario: str, comando: str) -> str | None:
+    """Retorna o comando corrigido se o binário for typo de um instalado."""
+    import os
+    paths = os.getenv("PATH", "").split(":")
+    candidatos = []
+    for p in paths:
+        try:
+            candidatos.extend(os.listdir(p))
+        except OSError:
+            pass
+
+    b = binario.lower()
+    for c in candidatos:
+        cl = c.lower()
+        if cl == b:
+            continue
+        if b in cl or cl in b:
+            continue
+        # distância simples: diferença de 1-2 chars
+        if len(b) == len(cl) and sum(x != y for x, y in zip(b, cl)) <= 2:
+            return comando.replace(binario, c, 1)
+        if abs(len(b) - len(cl)) == 1 and (b in cl or cl in b):
+            return comando.replace(binario, c, 1)
+    return None
+
+
 def _sugerir_alternativa(binario: str, descricao_original: str, sim: bool = False) -> str | None:
     console.print(f"\n[bold yellow]'{binario}' não existe neste sistema.[/bold yellow]")
     console.print("[dim]Buscando alternativa nativa...[/dim]\n")
@@ -92,11 +118,31 @@ def executar(descricao: str, sim: bool = False) -> None:
     console.print("\n[bold cyan]Gerando comando...[/bold cyan]")
     comando, explicacao = sugerir(descricao)
 
+    if comando.startswith("PERGUNTA:"):
+        pergunta = comando[len("PERGUNTA:"):].strip().split("?")[0] + "?"
+        console.print(f"\n[bold yellow]Preciso de mais informações:[/bold yellow] {pergunta}")
+        resposta = Prompt.ask("[bold]Sua resposta[/bold]")
+        descricao = f"{descricao} — {resposta}"
+        console.print("\n[bold cyan]Gerando comando...[/bold cyan]")
+        comando, explicacao = sugerir(descricao)
+        if comando.startswith("PERGUNTA:"):
+            console.print("[bold red]Não consegui entender o pedido. Tente ser mais específico.[/bold red]")
+            console.print("[dim]Exemplo: rumo executar \"iniciar servidor ollama com ollama serve\"[/dim]")
+            raise typer.Exit()
+
     console.print(f"\n[bold green]Comando:[/bold green] [yellow]{comando}[/yellow]")
     if explicacao:
         console.print(f"[dim]{explicacao}[/dim]")
 
     binario = _binario(comando)
+    if binario and not shutil.which(binario):
+        corrigido = _corrigir_typo(binario, comando)
+        if corrigido:
+            novo_binario = _binario(corrigido)
+            console.print(f"\n[dim]Corrigindo '{binario}' → '{novo_binario}'[/dim]")
+            comando = corrigido
+            binario = novo_binario
+
     if binario and not shutil.which(binario):
         cmd_alt = _sugerir_alternativa(binario, descricao, sim=sim)
         if cmd_alt:
