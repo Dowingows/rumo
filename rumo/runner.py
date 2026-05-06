@@ -4,6 +4,7 @@ import shutil
 import subprocess
 import typer
 from rich.console import Console
+from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
 from rumo.suggest import sugerir, _os_info
 from rumo import llm, memory
@@ -23,15 +24,41 @@ Use o caminho real ({home}) em vez de /Users/username ou ~.
 Se não houver nativo mas existir via brew, responda com: brew install <pacote>
 Não numere as linhas. Não inclua mais nada."""
 
+CRITICAL_PATTERNS = [
+    r"\brm\s+-[rf]",
+    r"\bdd\s+",
+    r"\bmkfs\b",
+    r"\bfdisk\b",
+    r"\bformat\b",
+    r">\s*/",
+    r"git\s+push\s+--force",
+    r"\bsudo\s+rm\b",
+    r"\bchmod\s+777\b",
+    r"\bshred\b",
+    r"\bwipe\b",
+]
+
+
+def _e_critico(comando: str) -> bool:
+    return any(re.search(p, comando) for p in CRITICAL_PATTERNS)
+
 
 def _binario(comando: str) -> str:
     token = re.split(r"[\s|;&]", comando.strip())[0]
     return token.lstrip("(").strip()
 
 
+def _confirmar_comando_rich(comando: str, explicacao: str = "", critico: bool = False) -> bool:
+    titulo = "[bold red]⚠️  Comando Crítico[/bold red]" if critico else "[bold yellow]⚠️  Comando Sugerido[/bold yellow]"
+    cor_borda = "red" if critico else "yellow"
+    conteudo = f"\n[bold yellow]{comando}[/bold yellow]\n"
+    if explicacao:
+        conteudo += f"\n[dim]{explicacao}[/dim]\n"
+    console.print(Panel(conteudo, title=titulo, border_style=cor_borda))
+    return Confirm.ask("[bold]Confirma?[/bold]", default=not critico)
+
+
 def _corrigir_typo(binario: str, comando: str) -> str | None:
-    """Retorna o comando corrigido se o binário for typo de um instalado."""
-    import os
     paths = os.getenv("PATH", "").split(":")
     candidatos = []
     for p in paths:
@@ -47,7 +74,6 @@ def _corrigir_typo(binario: str, comando: str) -> str | None:
             continue
         if b in cl or cl in b:
             continue
-        # distância simples: diferença de 1-2 chars
         if len(b) == len(cl) and sum(x != y for x, y in zip(b, cl)) <= 2:
             return comando.replace(binario, c, 1)
         if abs(len(b) - len(cl)) == 1 and (b in cl or cl in b):
@@ -114,7 +140,8 @@ def _pedir_correcao(descricao: str, sim: bool) -> None:
         console.print("[dim]Dica: use [bold]rumo diagnosticar[/bold] para entender o erro.[/dim]")
 
 
-def executar(descricao: str, sim: bool = False) -> None:
+def executar(descricao: str, sim: bool = False, auto: bool = False, perigo: bool = False) -> None:
+    pular_confirmacao = sim or auto or perigo
     console.print("\n[bold cyan]Gerando comando...[/bold cyan]")
     comando, explicacao = sugerir(descricao)
 
@@ -127,12 +154,20 @@ def executar(descricao: str, sim: bool = False) -> None:
         comando, explicacao = sugerir(descricao)
         if comando.startswith("PERGUNTA:"):
             console.print("[bold red]Não consegui entender o pedido. Tente ser mais específico.[/bold red]")
-            console.print("[dim]Exemplo: rumo executar \"iniciar servidor ollama com ollama serve\"[/dim]")
             raise typer.Exit()
 
-    console.print(f"\n[bold green]Comando:[/bold green] [yellow]{comando}[/yellow]")
-    if explicacao:
-        console.print(f"[dim]{explicacao}[/dim]")
+    critico = _e_critico(comando)
+
+    if perigo and critico:
+        console.print(f"\n[bold red]⚠️  MODO PERIGO — executando comando crítico sem confirmação:[/bold red] [yellow]{comando}[/yellow]\n")
+    elif not pular_confirmacao or (critico and not perigo):
+        if not _confirmar_comando_rich(comando, explicacao, critico=critico):
+            console.print("[dim]Cancelado.[/dim]")
+            raise typer.Exit()
+    else:
+        console.print(f"\n[bold green]Comando:[/bold green] [yellow]{comando}[/yellow]")
+        if explicacao:
+            console.print(f"[dim]{explicacao}[/dim]")
 
     binario = _binario(comando)
     if binario and not shutil.which(binario):
@@ -144,7 +179,7 @@ def executar(descricao: str, sim: bool = False) -> None:
             binario = novo_binario
 
     if binario and not shutil.which(binario):
-        cmd_alt = _sugerir_alternativa(binario, descricao, sim=sim)
+        cmd_alt = _sugerir_alternativa(binario, descricao, sim=pular_confirmacao)
         if cmd_alt:
             console.print()
             resultado = subprocess.run(cmd_alt, shell=True, text=True)
@@ -153,14 +188,8 @@ def executar(descricao: str, sim: bool = False) -> None:
                 console.print("[dim]Dica: use [bold]rumo diagnosticar[/bold] para entender o erro.[/dim]")
         raise typer.Exit()
 
-    if not sim:
-        confirmar = Confirm.ask("\n[bold]Executar?[/bold]", default=True)
-        if not confirmar:
-            console.print("[dim]Cancelado.[/dim]")
-            raise typer.Exit()
-
     console.print()
     resultado = subprocess.run(comando, shell=True, text=True)
     if resultado.returncode != 0:
         console.print(f"\n[bold red]Saiu com código {resultado.returncode}[/bold red]")
-        _pedir_correcao(descricao, sim)
+        _pedir_correcao(descricao, pular_confirmacao)
