@@ -108,7 +108,7 @@ def agente(tarefa: str, auto: bool = False, verbose: bool = False, modelo: str =
                             "du", "mkdir", "rm", "cp", "mv", "chmod", "chown", "curl",
                             "wget", "git", "docker", "kubectl", "python", "python3", "node",
                             "npm", "pip", "brew", "apt", "yum", "systemctl", "sudo"}
-                if primeiro_token in keywords or "/" in primeiro_token:
+                if primeiro_token in keywords:
                     if verbose:
                         console.print(f"[dim]Extraindo comando do texto: {cmd}[/dim]")
                     resultado = executar_tool("execute_shell", {"command": cmd}, auto=auto or perigo)
