@@ -242,13 +242,23 @@ def cmd_config(ctx: typer.Context):
     if ctx.invoked_subcommand is not None:
         return
 
-    from rumo.config import carregar, CONFIG_PATH
+    from rumo.config import carregar, ler_credencial, CONFIG_PATH, CREDENTIALS_PATH
 
     cfg = carregar()
+    backend = cfg.get("backend") or "auto"
 
     table = Table(title="Configuração do Rumo", border_style="cyan", show_header=True)
     table.add_column("Chave", style="bold cyan")
     table.add_column("Valor", style="yellow")
+
+    # backend e credenciais
+    table.add_row("Backend", backend)
+    groq_key = ler_credencial("RUMO_GROQ_KEY")
+    opencode_key = ler_credencial("RUMO_OPENCODE_KEY")
+    table.add_row("Groq API Key", "configurada" if groq_key else "[dim]não configurada[/dim]")
+    table.add_row("OpenCode API Key", "configurada" if opencode_key else "[dim]não configurada[/dim]")
+
+    table.add_section()
 
     rotulos = {
         "modelo_agente": "Modelo — agente",
@@ -263,38 +273,80 @@ def cmd_config(ctx: typer.Context):
 
     console.print()
     console.print(table)
-    console.print(f"\n[dim]Arquivo: {CONFIG_PATH}[/dim]")
+    console.print(f"\n[dim]Config: {CONFIG_PATH}[/dim]")
+    console.print(f"[dim]Credenciais: {CREDENTIALS_PATH}[/dim]")
     console.print("[dim]Para editar: rumo config setup[/dim]\n")
 
 
 @config_app.command("setup")
 def cmd_config_setup():
-    """Setup interativo para configurar modelos e comportamento."""
-    from rumo.config import carregar, salvar, CONFIG_PATH
+    """Setup interativo para configurar backend, credenciais e modelos."""
+    from rumo.config import carregar, salvar, salvar_credencial, ler_credencial, CONFIG_PATH
 
     cfg = carregar()
 
     console.print("\n[bold cyan]Setup do Rumo[/bold cyan]\n")
-    console.print(f"[dim]Configuração salva em: {CONFIG_PATH}[/dim]\n")
 
-    modelos = _listar_modelos_ollama()
-    if modelos:
-        console.print("[dim]Modelos Ollama disponíveis:[/dim] " + ", ".join(modelos))
-        console.print()
+    # --- 1. Backend ---
+    console.print("[bold]1. Backend LLM[/bold]\n")
+    console.print("  [cyan]ollama[/cyan]    — modelos locais via Ollama (sem custo, requer instalação)")
+    console.print("  [cyan]groq[/cyan]      — API gratuita, nenhuma instalação necessária")
+    console.print("  [cyan]opencode[/cyan]  — OpenCode Go, modelos de código otimizados ($5/mês)\n")
 
-    console.print("[bold]Configure os modelos[/bold] (Enter para manter o valor atual)\n")
+    backend_atual = cfg.get("backend") or "ollama"
+    backend = Prompt.ask(
+        "  Backend",
+        choices=["ollama", "groq", "opencode"],
+        default=backend_atual,
+    )
+    cfg["backend"] = backend
+
+    # --- 2. Credenciais ---
+    if backend == "groq":
+        console.print("\n[bold]2. Credenciais Groq[/bold]")
+        console.print("  Crie sua chave gratuita em [link]https://console.groq.com[/link]\n")
+        atual = ler_credencial("RUMO_GROQ_KEY")
+        mascara = f"{'*' * 8}{atual[-4:]}" if atual else "não configurada"
+        chave = Prompt.ask(f"  RUMO_GROQ_KEY [dim](atual: {mascara})[/dim]", default="")
+        if chave:
+            salvar_credencial("RUMO_GROQ_KEY", chave)
+
+    elif backend == "opencode":
+        console.print("\n[bold]2. Credenciais OpenCode Go[/bold]")
+        console.print("  Assine em [link]https://opencode.ai/go[/link] e copie sua API key\n")
+        atual = ler_credencial("RUMO_OPENCODE_KEY")
+        mascara = f"{'*' * 8}{atual[-4:]}" if atual else "não configurada"
+        chave = Prompt.ask(f"  RUMO_OPENCODE_KEY [dim](atual: {mascara})[/dim]", default="")
+        if chave:
+            salvar_credencial("RUMO_OPENCODE_KEY", chave)
+
+    # --- 3. Modelos ---
+    console.print("\n[bold]3. Modelos[/bold] (Enter para manter o valor atual)\n")
+
+    if backend == "ollama":
+        modelos = _listar_modelos_ollama()
+        if modelos:
+            console.print("[dim]Modelos Ollama disponíveis:[/dim] " + ", ".join(modelos))
+            console.print()
+        default_modelo = "qwen3:4b"
+    elif backend == "groq":
+        console.print("[dim]Modelos Groq: llama3-8b-8192, llama3-70b-8192, mixtral-8x7b-32768[/dim]\n")
+        default_modelo = "llama3-8b-8192"
+    else:
+        console.print("[dim]Modelos OpenCode Go: kimi-k2.6, deepseek-v4-pro, qwen3.6-plus, glm-5.1[/dim]\n")
+        default_modelo = "kimi-k2.6"
 
     cfg["modelo_agente"] = Prompt.ask(
         "  Modelo para [bold]agente[/bold]",
-        default=cfg.get("modelo_agente", "qwen3:4b"),
+        default=cfg.get("modelo_agente") or default_modelo,
     )
     cfg["modelo_executar"] = Prompt.ask(
         "  Modelo para [bold]executar / sugerir[/bold]",
-        default=cfg.get("modelo_executar", "qwen3:4b"),
+        default=cfg.get("modelo_executar") or default_modelo,
     )
     cfg["modelo_diagnosticar"] = Prompt.ask(
         "  Modelo para [bold]diagnosticar[/bold]",
-        default=cfg.get("modelo_diagnosticar", "qwen3:4b"),
+        default=cfg.get("modelo_diagnosticar") or default_modelo,
     )
 
     salvar(cfg)

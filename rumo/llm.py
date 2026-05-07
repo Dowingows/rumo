@@ -2,8 +2,11 @@ import json
 import os
 import re
 import httpx
+from pathlib import Path
 from dotenv import load_dotenv
 
+# carrega credenciais do usuário (~/.rumo/.env) antes do .env do projeto
+load_dotenv(Path.home() / ".rumo" / ".env")
 load_dotenv()
 
 OLLAMA_URL = os.getenv("RUMO_OLLAMA_URL", "http://localhost:11434")
@@ -12,11 +15,17 @@ OLLAMA_TEMPERATURE = float(os.getenv("RUMO_TEMPERATURE", "0.1"))
 GROQ_API_KEY = os.getenv("RUMO_GROQ_KEY", "")
 GROQ_MODEL = os.getenv("RUMO_GROQ_MODEL", "llama3-8b-8192")
 OPENCODE_API_KEY = os.getenv("RUMO_OPENCODE_KEY", "")
-OPENCODE_MODEL = os.getenv("RUMO_OPENCODE_MODEL", "opencode-go/kimi-k2.6")
+OPENCODE_MODEL = os.getenv("RUMO_OPENCODE_MODEL", "kimi-k2.6")
 OPENCODE_URL = "https://opencode.ai/zen/go/v1/chat/completions"
 
 
 def _backend() -> str:
+    from rumo.config import carregar
+    cfg = carregar()
+    escolha = cfg.get("backend", "")
+    if escolha in ("ollama", "groq", "opencode"):
+        return escolha
+    # auto-detect por chaves presentes
     if OPENCODE_API_KEY:
         return "opencode"
     if GROQ_API_KEY:
@@ -117,6 +126,8 @@ def _opencode_tools(messages: list[dict], tools: list[dict], model: str = "", de
             "type": "tool_call",
             "name": tc["function"]["name"],
             "arguments": json.loads(tc["function"]["arguments"]),
+            "tool_call_id": tc["id"],
+            "assistant_message": msg,
         }
     return {"type": "text", "content": msg.get("content", "").strip()}
 
@@ -187,6 +198,8 @@ def _groq_tools(messages: list[dict], tools: list[dict], debug: bool = False) ->
             "type": "tool_call",
             "name": tc["function"]["name"],
             "arguments": json.loads(tc["function"]["arguments"]),
+            "tool_call_id": tc["id"],
+            "assistant_message": msg,
         }
     return {"type": "text", "content": msg.get("content", "").strip()}
 

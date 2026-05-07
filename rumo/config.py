@@ -2,9 +2,11 @@ import re
 from pathlib import Path
 
 CONFIG_PATH = Path.home() / ".rumo" / "config.md"
+CREDENTIALS_PATH = Path.home() / ".rumo" / ".env"
 
 TYPES = {
     "max_iterations": int,
+    "backend": str,
     "modelo_agente": str,
     "modelo_executar": str,
     "modelo_diagnosticar": str,
@@ -14,6 +16,7 @@ TYPES = {
 
 DEFAULTS = {
     "max_iterations": 10,
+    "backend": "",
     "modelo_agente": "qwen3:4b",
     "modelo_executar": "qwen3:4b",
     "modelo_diagnosticar": "qwen3:4b",
@@ -63,12 +66,16 @@ def carregar() -> dict:
 
 def salvar(cfg: dict) -> None:
     CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    backend = cfg.get("backend", DEFAULTS["backend"]) or "ollama"
     conteudo = f"""# Configuração do Rumo
+
+## Backend
+- **backend**: {backend}
+  Opções: ollama (local), groq (API gratuita), opencode (OpenCode Go)
 
 ## Agente
 - **max_iterations**: {cfg.get('max_iterations', DEFAULTS['max_iterations'])}
 - **modelo_agente**: {cfg.get('modelo_agente', DEFAULTS['modelo_agente'])}
-  Modelos recomendados: qwen3:4b (padrão), qwen3:8b (mais capaz), qwen2.5:7b
 
 ## Comandos
 - **modelo_executar**: {cfg.get('modelo_executar', DEFAULTS['modelo_executar'])}
@@ -79,6 +86,25 @@ def salvar(cfg: dict) -> None:
 - **verbose**: {str(cfg.get('verbose', DEFAULTS['verbose'])).lower()}
 """
     CONFIG_PATH.write_text(conteudo)
+
+
+def salvar_credencial(chave: str, valor: str) -> None:
+    CREDENTIALS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    conteudo = CREDENTIALS_PATH.read_text() if CREDENTIALS_PATH.exists() else ""
+    if re.search(rf"^{chave}=", conteudo, re.MULTILINE):
+        conteudo = re.sub(rf"^{chave}=.*$", f"{chave}={valor}", conteudo, flags=re.MULTILINE)
+    else:
+        conteudo = conteudo.rstrip("\n") + f"\n{chave}={valor}\n"
+    CREDENTIALS_PATH.write_text(conteudo.lstrip("\n"))
+
+
+def ler_credencial(chave: str) -> str:
+    if not CREDENTIALS_PATH.exists():
+        return ""
+    for linha in CREDENTIALS_PATH.read_text().splitlines():
+        if linha.startswith(f"{chave}="):
+            return linha[len(chave) + 1:].strip()
+    return ""
 
 
 def garantir_config_padrao() -> None:

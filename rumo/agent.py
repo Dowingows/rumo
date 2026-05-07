@@ -113,12 +113,20 @@ def agente(tarefa: str, auto: bool = False, verbose: bool = False, modelo: str =
                         console.print(f"[dim]Extraindo comando do texto: {cmd}[/dim]")
                     resultado = executar_tool("execute_shell", {"command": cmd}, auto=auto or perigo)
                     mem.registrar_comando(cmd, resultado, "código de retorno: 0" in resultado)
-                    messages.append({"role": "tool", "name": "execute_shell", "content": resultado})
+                    messages.append({"role": "user", "content": f"Resultado do comando `{cmd}`:\n{resultado}"})
                     if verbose:
                         console.print(f"[dim]Resultado:[/dim]\n{_format_result(resultado, verbose)}\n")
                     continue
 
-            # resposta final
+            # resposta final — extrai "response" se o modelo retornou JSON (Ollama)
+            if conteudo.strip().startswith("{"):
+                try:
+                    import json as _json
+                    dados = _json.loads(conteudo)
+                    if "response" in dados and dados.get("tool") is None:
+                        conteudo = dados["response"]
+                except Exception:
+                    pass
             console.print(Panel(Markdown(conteudo), title="[bold green]Agente[/bold green]", border_style="green"))
             return
 
@@ -128,6 +136,10 @@ def agente(tarefa: str, auto: bool = False, verbose: bool = False, modelo: str =
 
         if verbose:
             console.print(f"[bold cyan]Tool:[/bold cyan] {nome}({args})")
+
+        # APIs OpenAI-compatible exigem a mensagem do assistant com tool_calls no histórico
+        if "assistant_message" in resposta:
+            messages.append(resposta["assistant_message"])
 
         resultado = executar_tool(nome, args, auto=auto or perigo)
 
@@ -141,7 +153,10 @@ def agente(tarefa: str, auto: bool = False, verbose: bool = False, modelo: str =
         if verbose:
             console.print(f"[dim]{_format_result(resultado, verbose)}[/dim]\n")
 
-        messages.append({"role": "tool", "name": nome, "content": resultado})
+        if "tool_call_id" in resposta:
+            messages.append({"role": "tool", "tool_call_id": resposta["tool_call_id"], "content": resultado})
+        else:
+            messages.append({"role": "tool", "name": nome, "content": resultado})
 
     console.print(
         f"\n[bold yellow]⚠️  Limite de {max_iter} iterações atingido.[/bold yellow]\n"
