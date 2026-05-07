@@ -50,7 +50,7 @@ def agente(tarefa: str, auto: bool = False, verbose: bool = False, modelo: str =
     config.garantir_config_padrao()
 
     max_iter = cfg["max_iterations"]
-    modelo_final = modelo or cfg["modelo_agente"]
+    modelo_final = modelo or os.getenv("RUMO_AGENTE_MODEL", "") or cfg["modelo_agente"]
 
     # contexto rico montado uma vez
     ctx_discovery = discovery.contexto_para_llm()

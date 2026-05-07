@@ -29,13 +29,15 @@ Não inclua mais nada na resposta.{memoria}{help}"""
 
 
 def sugerir(descricao: str) -> tuple[str, str]:
-    from rumo import memory
+    from rumo import memory, config as cfg_module
 
     # memória tem prioridade — retorna imediatamente se há correspondência exata
     salvo = memory.buscar_exato(descricao)
     if salvo:
         return salvo, "(da memória)"
 
+    cfg = cfg_module.carregar()
+    modelo = cfg.get("modelo_executar", "")
     ctx_memoria = memory.contexto_para_llm()
     ctx_help = _help_da_ferramenta(descricao)
     sistema = SYSTEM.format(
@@ -45,7 +47,7 @@ def sugerir(descricao: str) -> tuple[str, str]:
         memoria=f"\n{ctx_memoria}" if ctx_memoria else "",
         help=f"\n{ctx_help}" if ctx_help else "",
     )
-    resposta = llm.complete(descricao, system=sistema)
+    resposta = llm.complete(descricao, system=sistema, model=modelo)
 
     linha = resposta.strip().splitlines()[0].strip() if resposta.strip() else ""
     if linha.upper().startswith("PERGUNTA:"):

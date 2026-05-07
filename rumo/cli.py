@@ -1,8 +1,11 @@
+import subprocess
 import typer
 from typing import Optional
 from rich.console import Console
 from rich.panel import Panel
 from rich.markdown import Markdown
+from rich.table import Table
+from rich.prompt import Prompt
 
 app = typer.Typer(
     name="rumo",
@@ -10,9 +13,25 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 plugin_app = typer.Typer(name="plugin", help="Gerencia plugins do rumo.")
+config_app = typer.Typer(name="config", help="Gerencia configuração do rumo.")
 app.add_typer(plugin_app, name="plugin")
+app.add_typer(config_app, name="config")
 
 console = Console()
+
+
+@app.callback()
+def _verificar_primeiro_acesso(ctx: typer.Context):
+    from rumo.config import CONFIG_PATH
+    if ctx.invoked_subcommand in (None, "config"):
+        return
+    if not CONFIG_PATH.exists():
+        console.print(Panel(
+            "[bold cyan]Bem-vindo ao Rumo![/bold cyan]\n\n"
+            "É o seu primeiro acesso. Vamos configurar os modelos LLM antes de continuar.",
+            border_style="cyan",
+        ))
+        cmd_config_setup()
 
 
 @app.command("sugerir")
@@ -198,6 +217,88 @@ def cmd_plugin_remove(
     else:
         console.print(f"[bold red]Plugin '{nome}' não encontrado.[/bold red]")
         raise typer.Exit(1)
+
+
+# --- Subcomandos config ---
+
+def _listar_modelos_ollama() -> list[str]:
+    try:
+        result = subprocess.run(["ollama", "list"], capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            modelos = []
+            for linha in result.stdout.strip().splitlines()[1:]:
+                partes = linha.split()
+                if partes:
+                    modelos.append(partes[0])
+            return modelos
+    except Exception:
+        pass
+    return []
+
+
+@config_app.callback(invoke_without_command=True)
+def cmd_config(ctx: typer.Context):
+    """Mostra a configuração atual. Use 'rumo config setup' para configurar."""
+    if ctx.invoked_subcommand is not None:
+        return
+
+    from rumo.config import carregar, CONFIG_PATH
+
+    cfg = carregar()
+
+    table = Table(title="Configuração do Rumo", border_style="cyan", show_header=True)
+    table.add_column("Chave", style="bold cyan")
+    table.add_column("Valor", style="yellow")
+
+    rotulos = {
+        "modelo_agente": "Modelo — agente",
+        "modelo_executar": "Modelo — executar/sugerir",
+        "modelo_diagnosticar": "Modelo — diagnosticar",
+        "max_iterations": "Iterações máximas (agente)",
+        "confirmar_criticas": "Confirmar ações críticas",
+        "verbose": "Verbose",
+    }
+    for chave, rotulo in rotulos.items():
+        table.add_row(rotulo, str(cfg.get(chave, "")))
+
+    console.print()
+    console.print(table)
+    console.print(f"\n[dim]Arquivo: {CONFIG_PATH}[/dim]")
+    console.print("[dim]Para editar: rumo config setup[/dim]\n")
+
+
+@config_app.command("setup")
+def cmd_config_setup():
+    """Setup interativo para configurar modelos e comportamento."""
+    from rumo.config import carregar, salvar, CONFIG_PATH
+
+    cfg = carregar()
+
+    console.print("\n[bold cyan]Setup do Rumo[/bold cyan]\n")
+    console.print(f"[dim]Configuração salva em: {CONFIG_PATH}[/dim]\n")
+
+    modelos = _listar_modelos_ollama()
+    if modelos:
+        console.print("[dim]Modelos Ollama disponíveis:[/dim] " + ", ".join(modelos))
+        console.print()
+
+    console.print("[bold]Configure os modelos[/bold] (Enter para manter o valor atual)\n")
+
+    cfg["modelo_agente"] = Prompt.ask(
+        "  Modelo para [bold]agente[/bold]",
+        default=cfg.get("modelo_agente", "qwen3:4b"),
+    )
+    cfg["modelo_executar"] = Prompt.ask(
+        "  Modelo para [bold]executar / sugerir[/bold]",
+        default=cfg.get("modelo_executar", "qwen3:4b"),
+    )
+    cfg["modelo_diagnosticar"] = Prompt.ask(
+        "  Modelo para [bold]diagnosticar[/bold]",
+        default=cfg.get("modelo_diagnosticar", "qwen3:4b"),
+    )
+
+    salvar(cfg)
+    console.print(f"\n[bold green]✓ Configuração salva em {CONFIG_PATH}[/bold green]\n")
 
 
 if __name__ == "__main__":

@@ -6,34 +6,44 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3:4b")
-OLLAMA_TEMPERATURE = float(os.getenv("OLLAMA_TEMPERATURE", "0.1"))
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
-GROQ_MODEL = os.getenv("GROQ_MODEL", "llama3-8b-8192")
+OLLAMA_URL = os.getenv("RUMO_OLLAMA_URL", "http://localhost:11434")
+OLLAMA_MODEL = os.getenv("RUMO_MODEL", "qwen3:4b")
+OLLAMA_TEMPERATURE = float(os.getenv("RUMO_TEMPERATURE", "0.1"))
+GROQ_API_KEY = os.getenv("RUMO_GROQ_KEY", "")
+GROQ_MODEL = os.getenv("RUMO_GROQ_MODEL", "llama3-8b-8192")
+OPENCODE_API_KEY = os.getenv("RUMO_OPENCODE_KEY", "")
+OPENCODE_MODEL = os.getenv("RUMO_OPENCODE_MODEL", "opencode-go/kimi-k2.6")
+OPENCODE_URL = "https://opencode.ai/zen/go/v1/chat/completions"
 
 
-def _use_groq() -> bool:
-    return bool(GROQ_API_KEY)
+def _backend() -> str:
+    if OPENCODE_API_KEY:
+        return "opencode"
+    if GROQ_API_KEY:
+        return "groq"
+    return "ollama"
 
 
-def complete(prompt: str, system: str = "") -> str:
-    if _use_groq():
+def complete(prompt: str, system: str = "", model: str = "") -> str:
+    backend = _backend()
+    if backend == "opencode":
+        return _opencode(prompt, system, model)
+    if backend == "groq":
         return _groq(prompt, system)
-    return _ollama(prompt, system)
+    return _ollama(prompt, system, model or OLLAMA_MODEL)
 
 
 def complete_with_tools(messages: list[dict], tools: list[dict], model: str = "", debug: bool = False) -> dict:
-    """
-    Chama o LLM com tool calling via prompt engineering.
-    Retorna {"type": "text", "content": str} ou {"type": "tool_call", "name": str, "arguments": dict}.
-    """
-    if _use_groq():
+    """Retorna {"type": "text", "content": str} ou {"type": "tool_call", "name": str, "arguments": dict}."""
+    backend = _backend()
+    if backend == "opencode":
+        return _opencode_tools(messages, tools, model, debug=debug)
+    if backend == "groq":
         return _groq_tools(messages, tools, debug=debug)
     return _ollama_tools(messages, tools, model or OLLAMA_MODEL, debug=debug)
 
 
-def _ollama(prompt: str, system: str) -> str:
+def _ollama(prompt: str, system: str, model: str = "") -> str:
     messages = []
     if system:
         messages.append({"role": "system", "content": system})
@@ -41,7 +51,7 @@ def _ollama(prompt: str, system: str) -> str:
 
     response = httpx.post(
         f"{OLLAMA_URL}/api/chat",
-        json={"model": OLLAMA_MODEL, "messages": messages, "stream": False,
+        json={"model": model or OLLAMA_MODEL, "messages": messages, "stream": False,
               "options": {"temperature": OLLAMA_TEMPERATURE, "think": False}},
         timeout=60,
     )
@@ -63,6 +73,52 @@ def _groq(prompt: str, system: str) -> str:
     )
     response.raise_for_status()
     return response.json()["choices"][0]["message"]["content"].strip()
+
+
+def _opencode(prompt: str, system: str, model: str = "") -> str:
+    messages = []
+    if system:
+        messages.append({"role": "system", "content": system})
+    messages.append({"role": "user", "content": prompt})
+
+    response = httpx.post(
+        OPENCODE_URL,
+        headers={"Authorization": f"Bearer {OPENCODE_API_KEY}"},
+        json={"model": model or OPENCODE_MODEL, "messages": messages},
+        timeout=60,
+    )
+    response.raise_for_status()
+    return response.json()["choices"][0]["message"]["content"].strip()
+
+
+def _opencode_tools(messages: list[dict], tools: list[dict], model: str = "", debug: bool = False) -> dict:
+    """Tool calling nativo via OpenCode Go API (OpenAI-compatible)."""
+    modelo = model or OPENCODE_MODEL
+    if debug:
+        print(f"\n\033[90m[DEBUG] Enviando {len(messages)} mensagens ao OpenCode Go (modelo={modelo})\033[0m")
+
+    response = httpx.post(
+        OPENCODE_URL,
+        headers={"Authorization": f"Bearer {OPENCODE_API_KEY}"},
+        json={"model": modelo, "messages": messages, "tools": tools, "tool_choice": "auto"},
+        timeout=60,
+    )
+    response.raise_for_status()
+    msg = response.json()["choices"][0]["message"]
+
+    if debug:
+        import json as _json
+        print(f"\033[90m[DEBUG] Resposta raw do OpenCode Go:\033[0m")
+        print(f"\033[93m{_json.dumps(msg, ensure_ascii=False, indent=2)}\033[0m\n")
+
+    if msg.get("tool_calls"):
+        tc = msg["tool_calls"][0]
+        return {
+            "type": "tool_call",
+            "name": tc["function"]["name"],
+            "arguments": json.loads(tc["function"]["arguments"]),
+        }
+    return {"type": "text", "content": msg.get("content", "").strip()}
 
 
 def _ollama_tools(messages: list[dict], tools: list[dict], model: str, debug: bool = False) -> dict:
