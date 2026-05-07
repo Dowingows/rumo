@@ -1,5 +1,5 @@
 import sys
-from rumo import llm
+from rumo import llm, config
 from rich.console import Console
 from rich.panel import Panel
 from rich.markdown import Markdown
@@ -28,6 +28,8 @@ def diagnosticar(erro: str | None = None) -> None:
         console.print("[dim]Nenhum erro fornecido.[/dim]")
         return
 
+    cfg = config.carregar()
+    modelo = cfg.get("modelo_diagnosticar", "")
     console.print("\n[bold cyan]Analisando erro...[/bold cyan]\n")
-    resposta = llm.complete(erro, system=SYSTEM)
+    resposta = llm.complete(erro, system=SYSTEM, model=modelo)
     console.print(Panel(Markdown(resposta), title="[bold red]Diagnóstico[/bold red]", border_style="red"))
