@@ -6,8 +6,36 @@ CLI inteligente para terminal: sugira, execute e diagnostique comandos em lingua
 
 ## Instalação
 
+### Recomendado: pipx (qualquer computador, atualização fácil)
+
+Requer Python 3.10+ e [pipx](https://pipx.pypa.io).
+
 ```bash
-git clone <repositório>
+# instalar pipx se não tiver
+brew install pipx        # macOS
+pip install pipx         # ou via pip
+pipx ensurepath
+
+# instalar o rumo direto do GitHub
+pipx install git+https://github.com/Dowingows/rumo.git
+```
+
+Para atualizar para a versão mais recente:
+
+```bash
+pipx upgrade rumo
+```
+
+Para desinstalar:
+
+```bash
+pipx uninstall rumo
+```
+
+### Desenvolvimento local
+
+```bash
+git clone https://github.com/Dowingows/rumo.git
 cd rumo
 python -m venv .venv
 source .venv/bin/activate
